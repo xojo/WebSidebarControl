@@ -210,4 +210,3 @@ A Xojo Web 2 project.
 ## References
 
 - [Xojo WebSDKUIControl](https://documentation.xojo.com/api/user_interface/web/websdkuicontrol.html)
-- [Xojo text-format reference](https://github.com/xojo/XojoProjectFormatReference)
