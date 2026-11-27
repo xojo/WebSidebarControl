@@ -30,7 +30,7 @@ Inherits WebSDKUIControl
 		  For Each raw As String In lines
 		    Var line As String = raw.Trim
 		    If line.IsEmpty Then Continue
-		    
+
 		    If line.BeginsWith("#") Then
 		      Var heading As String = line.Middle(1).Trim
 		      If heading.IsEmpty Then Continue
@@ -53,7 +53,7 @@ Inherits WebSDKUIControl
 		          caption = line.Middle(closing + 1).Trim
 		        End If
 		      End If
-		      
+
 		      g.Bold = False
 		      g.FontSize = 13
 		      Var x As Integer = 16
@@ -195,7 +195,9 @@ Inherits WebSDKUIControl
 		Function SessionJavascriptURLs(session As WebSession) As String()
 		  If SharedJSFile = Nil Then
 		    SharedJSFile = New WebFile
-		    SharedJSFile.Filename = "xojo-sidebar.js"
+		    // Version token derived from the script content: the filename (and URL) changes
+		    // only when the JavaScript changes, so browsers refetch after an update.
+		    SharedJSFile.Filename = JSFileName
 		    SharedJSFile.MIMEType = "text/javascript"
 		    SharedJSFile.Data = kJS
 		    SharedJSFile.Session = Nil
@@ -253,6 +255,14 @@ Inherits WebSDKUIControl
 		  mItems(FindItem(separatorID)).Value("kind") = "separator"
 		  UpdateControl
 		End Sub
+	#tag EndMethod
+
+	#tag Method, Flags = &h21, Description = 46696C656E616D6520666F7220746865207363726970742C2077697468206120636F6E74656E74206861736820736F2062726F7773657273207265666574636820697420616674657220616E207570646174652E
+		Private Function JSFileName() As String
+		  Static name As String
+		  If name = "" Then name = "xojo-sidebar-" + EncodeHex(Crypto.MD5(kJS)).Left(8).Lowercase + ".js"
+		  Return name
+		End Function
 	#tag EndMethod
 
 	#tag Method, Flags = &h21, Description = 52657475726E73205472756520696620746865206974656D206578697374732C20697320612076697369626C6520656E61626C6564206C656166206974656D2C20616E642069747320706172656E742069732076697369626C6520616E6420656E61626C65642E
@@ -422,45 +432,6 @@ Inherits WebSDKUIControl
 		End Sub
 	#tag EndMethod
 
-	#tag Method, Flags = &h21
-		Private Sub LoadInitialValue()
-		  // Rebuilds every item from InitialValue. Each entry's ID is its caption.
-		  Clear
-		  Var kinds() As String
-		  Var captions() As String
-		  Var icons() As String
-		  Var levels() As Integer
-		  ParseInitialValue(mInitialValue, kinds, captions, icons, levels)
-		  
-		  Var parentID As String
-		  Var separatorCount As Integer
-		  For i As Integer = 0 To kinds.LastIndex
-		    Select Case kinds(i)
-		    Case "section"
-		      AddSection("#" + captions(i), captions(i))
-		      parentID = ""
-		    Case "separator"
-		      separatorCount = separatorCount + 1
-		      AddSeparator("---" + Str(separatorCount))
-		      parentID = ""
-		    Else
-		      Var caption As String = captions(i)
-		      If caption.Length > 80 Or ContainsItem(caption) Then
-		        Var problem As New InvalidArgumentException
-		        problem.Message = "InitialValue entry is too long or repeated: " + caption
-		        Raise problem
-		      End If
-		      If levels(i) > 0 And Not parentID.IsEmpty Then
-		        AddItem(caption, caption, icons(i), parentID)
-		      Else
-		        AddItem(caption, caption, icons(i))
-		        parentID = caption
-		      End If
-		    End Select
-		  Next
-		End Sub
-	#tag EndMethod
-
 	#tag Method, Flags = &h21, Description = 436C65617273207468652073656C656374696F6E206966207468652073656C6563746564206974656D2063616E206E6F206C6F6E6765722062652073656C65637465642E
 		Private Sub NormalizeSelection()
 		  If mSelectedItemID <> "" And Not CanSelect(mSelectedItemID) Then
@@ -473,53 +444,6 @@ Inherits WebSDKUIControl
 		Sub OpenDrawer()
 		  mDrawerOpen = True
 		  UpdateControl
-		End Sub
-	#tag EndMethod
-
-	#tag Method, Flags = &h121
-		Private Shared Sub ParseInitialValue(text As String, kinds() As String, captions() As String, icons() As String, levels() As Integer)
-		  // One entry per line:
-		  //   #Heading            a section heading
-		  //   ---                 a separator
-		  //   <bi-house> Overview an item with a Bootstrap icon (the icon is optional)
-		  //   (indented)          a child of the item above
-		  Var lines() As String = text.ReplaceLineEndings(Chr(10)).Split(Chr(10))
-		  For Each raw As String In lines
-		    Var line As String = raw.Trim
-		    If line.IsEmpty Then Continue
-		    
-		    Var kind As String = "item"
-		    Var caption As String = line
-		    Var icon As String
-		    Var level As Integer
-		    If line.BeginsWith("#") Then
-		      kind = "section"
-		      caption = line.Middle(1).Trim
-		      If caption.IsEmpty Then Continue
-		    ElseIf line = "---" Then
-		      kind = "separator"
-		      caption = ""
-		    Else
-		      If raw.BeginsWith(" ") Or raw.BeginsWith(Chr(9)) Then level = 1
-		      If line.BeginsWith("<") Then
-		        Var closing As Integer = line.IndexOf(">")
-		        If closing > 1 Then
-		          icon = line.Middle(1, closing - 1).Trim
-		          caption = line.Middle(closing + 1).Trim
-		          If caption.IsEmpty Then
-		            // Nothing follows the icon: the whole line is the caption.
-		            icon = ""
-		            caption = line
-		          End If
-		        End If
-		      End If
-		    End If
-		    
-		    kinds.Add(kind)
-		    captions.Add(caption)
-		    icons.Add(icon)
-		    levels.Add(level)
-		  Next
 		End Sub
 	#tag EndMethod
 
@@ -688,6 +612,92 @@ Inherits WebSDKUIControl
 		End Sub
 	#tag EndMethod
 
+	#tag Method, Flags = &h21
+		Private Sub LoadInitialValue()
+		  // Rebuilds every item from InitialValue. Each entry's ID is its caption.
+		  Clear
+		  Var kinds() As String
+		  Var captions() As String
+		  Var icons() As String
+		  Var levels() As Integer
+		  ParseInitialValue(mInitialValue, kinds, captions, icons, levels)
+
+		  Var parentID As String
+		  Var separatorCount As Integer
+		  For i As Integer = 0 To kinds.LastIndex
+		    Select Case kinds(i)
+		    Case "section"
+		      AddSection("#" + captions(i), captions(i))
+		      parentID = ""
+		    Case "separator"
+		      separatorCount = separatorCount + 1
+		      AddSeparator("---" + Str(separatorCount))
+		      parentID = ""
+		    Else
+		      Var caption As String = captions(i)
+		      If caption.Length > 80 Or ContainsItem(caption) Then
+		        Var problem As New InvalidArgumentException
+		        problem.Message = "InitialValue entry is too long or repeated: " + caption
+		        Raise problem
+		      End If
+		      If levels(i) > 0 And Not parentID.IsEmpty Then
+		        AddItem(caption, caption, icons(i), parentID)
+		      Else
+		        AddItem(caption, caption, icons(i))
+		        parentID = caption
+		      End If
+		    End Select
+		  Next
+		End Sub
+	#tag EndMethod
+
+	#tag Method, Flags = &h121
+		Private Shared Sub ParseInitialValue(text As String, kinds() As String, captions() As String, icons() As String, levels() As Integer)
+		  // One entry per line:
+		  //   #Heading            a section heading
+		  //   ---                 a separator
+		  //   <bi-house> Overview an item with a Bootstrap icon (the icon is optional)
+		  //   (indented)          a child of the item above
+		  Var lines() As String = text.ReplaceLineEndings(Chr(10)).Split(Chr(10))
+		  For Each raw As String In lines
+		    Var line As String = raw.Trim
+		    If line.IsEmpty Then Continue
+
+		    Var kind As String = "item"
+		    Var caption As String = line
+		    Var icon As String
+		    Var level As Integer
+		    If line.BeginsWith("#") Then
+		      kind = "section"
+		      caption = line.Middle(1).Trim
+		      If caption.IsEmpty Then Continue
+		    ElseIf line = "---" Then
+		      kind = "separator"
+		      caption = ""
+		    Else
+		      If raw.BeginsWith(" ") Or raw.BeginsWith(Chr(9)) Then level = 1
+		      If line.BeginsWith("<") Then
+		        Var closing As Integer = line.IndexOf(">")
+		        If closing > 1 Then
+		          icon = line.Middle(1, closing - 1).Trim
+		          caption = line.Middle(closing + 1).Trim
+		          If caption.IsEmpty Then
+		            // Nothing follows the icon: the whole line is the caption.
+		            icon = ""
+		            caption = line
+		          End If
+		        End If
+		      End If
+		    End If
+
+		    kinds.Add(kind)
+		    captions.Add(caption)
+		    icons.Add(icon)
+		    levels.Add(level)
+		  Next
+		End Sub
+	#tag EndMethod
+
 
 	#tag Hook, Flags = &h0, Description = 526169736564207768656E20746865207573657220657870616E6473206F7220636F6C6C61707365732074686520736964656261722E
 		Event CollapsedChanged(collapsed As Boolean)
@@ -713,6 +723,22 @@ Inherits WebSDKUIControl
 	#tag Property, Flags = &h0
 		AutoLayout As Boolean = True
 	#tag EndProperty
+
+	#tag ComputedProperty, Flags = &h0, Description = 4472617773206120737562746C6520736861646F7720616C6F6E67207468652073696465626172206564676520746F2073657061726174652069742066726F6D20746865207061676520636F6E74656E742E
+		#tag Getter
+			Get
+			  Return mDropShadow
+			End Get
+		#tag EndGetter
+		#tag Setter
+			Set
+			  If mDropShadow = value Then Return
+			  mDropShadow = value
+			  UpdateControl
+			End Set
+		#tag EndSetter
+		DropShadow As Boolean
+	#tag EndComputedProperty
 
 	#tag ComputedProperty, Flags = &h0, Description = 547275652073686F77732074686520636F6D706163742C2069636F6E732D6F6E6C7920736964656261722E
 		#tag Getter
@@ -761,22 +787,6 @@ Inherits WebSDKUIControl
 			End Set
 		#tag EndSetter
 		DarkAccent As String
-	#tag EndComputedProperty
-
-	#tag ComputedProperty, Flags = &h0, Description = 4472617773206120737562746C6520736861646F7720616C6F6E67207468652073696465626172206564676520746F2073657061726174652069742066726F6D20746865207061676520636F6E74656E742E
-		#tag Getter
-			Get
-			  Return mDropShadow
-			End Get
-		#tag EndGetter
-		#tag Setter
-			Set
-			  If mDropShadow = value Then Return
-			  mDropShadow = value
-			  UpdateControl
-			End Set
-		#tag EndSetter
-		DropShadow As Boolean
 	#tag EndComputedProperty
 
 	#tag ComputedProperty, Flags = &h0, Description = 576964746820696E20706978656C73207768656E20657870616E64656420286D696E696D756D20313630292E
@@ -856,6 +866,10 @@ Inherits WebSDKUIControl
 		Logo As Picture
 	#tag EndComputedProperty
 
+	#tag Property, Flags = &h21
+		Private mDropShadow As Boolean = False
+	#tag EndProperty
+
 	#tag Property, Flags = &h21, Description = 4261636B696E67206669656C6420666F7220436F6C6C61707365642E
 		Private mCollapsed As Boolean = False
 	#tag EndProperty
@@ -870,10 +884,6 @@ Inherits WebSDKUIControl
 
 	#tag Property, Flags = &h21, Description = 54727565207768696C6520746865206D6F62696C6520647261776572206973206F70656E2E
 		Private mDrawerOpen As Boolean = False
-	#tag EndProperty
-
-	#tag Property, Flags = &h21
-		Private mDropShadow As Boolean = False
 	#tag EndProperty
 
 	#tag Property, Flags = &h21, Description = 4261636B696E67206669656C6420666F7220457870616E64656457696474682E
